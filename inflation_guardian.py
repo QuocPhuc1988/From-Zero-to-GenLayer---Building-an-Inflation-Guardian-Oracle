@@ -1,27 +1,50 @@
-from genlayer import IntelligentContract
+# v0.2.16
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
-class InflationGuardian(IntelligentContract):
-    def __init__(self, fixed_salary: int):
-        self.fixed_salary = fixed_salary # Mức lương cố định (Assets)
-        self.status = "Normal"
+from genlayer import *
 
-    @view
-    def evaluate_pressure(self):
+class TokenContract(gl.Contract):
+    # Khai báo State Variables
+    total_supply: u256
+    balances: TreeMap[str, u256]
+
+    def __init__(self, initial_supply: u256):
         """
-        AI quét giá xăng RON 95 và giá gạo để đánh giá áp lực chi tiêu.
+        Khởi tạo Token và cấp toàn bộ Supply cho người Deploy.
         """
-        # Đây là nơi Optimistic Democracy hoạt động
-        prompt = f"""
-        Hôm nay là 28/03/2026. Hãy tìm giá xăng RON 95 và giá gạo tại Kiên Giang, Việt Nam.
-        Với mức thu nhập cố định là {self.fixed_salary} VND.
-        Hãy đánh giá áp lực chi tiêu: 'An toàn' hoặc 'Cảnh báo'.
-        Chỉ trả về 1 từ duy nhất.
-        """
-        prediction = self.ai_request(prompt)
+        self.total_supply = initial_supply
+        self.balances = TreeMap()
         
-        if "Cảnh báo" in prediction:
-            self.status = "WARNING: Inflation Crisis"
-        else:
-            self.status = "Normal"
-            
-        return self.status
+        # Gán toàn bộ số dư ban đầu cho người tạo hợp đồng
+        self.balances[gl.message.sender] = initial_supply
+
+    @gl.public.view
+    def get_balance_of(self, address: str) -> u256:
+        """
+        Kiểm tra số dư của một địa chỉ bất kỳ.
+        """
+        return self.balances.get(address, u256(0))
+
+    @gl.public.write
+    def transfer(self, to_address: str, amount: u256):
+        """
+        Logic chuyển tiền an toàn: Kiểm tra số dư -> Trừ người gửi -> Cộng người nhận.
+        """
+        sender = gl.message.sender
+        
+        # 1. Lấy số dư hiện tại của người gửi
+        sender_balance = self.balances.get(sender, u256(0))
+        
+        # 2. Kiểm tra điều kiện (Security First)
+        # Nếu không đủ tiền, giao dịch sẽ fail và không tốn Gas/Tài nguyên vô ích
+        assert sender_balance >= amount, "Lỗi: Số dư không đủ để thực hiện giao dịch"
+        
+        # 3. Cập nhật số dư người gửi
+        self.balances[sender] = sender_balance - amount
+        
+        # 4. Cập nhật số dư người nhận
+        receiver_balance = self.balances.get(to_address, u256(0))
+        self.balances[to_address] = receiver_balance + amount
+        
+        # Log đơn giản để xác nhận (Tùy chọn)
+        print(f"Giao dịch thành công: {amount} token đã được gửi tới {to_address}")
