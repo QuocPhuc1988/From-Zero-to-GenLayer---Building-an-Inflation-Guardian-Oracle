@@ -4,7 +4,7 @@
 from genlayer import *
 
 class TokenContract(gl.Contract):
-    # Khai báo State với TreeMap và u256
+    # State variables: TreeMap và u256 là bắt buộc cho Storage
     total_supply: u256
     balances: TreeMap[str, u256]
 
@@ -12,9 +12,9 @@ class TokenContract(gl.Contract):
         self.total_supply = initial_supply
         self.balances = TreeMap()
         
-        # FIX CỐT LÕI: Sử dụng gl.get_caller_address() 
-        # để gán toàn bộ supply cho người deploy
-        deployer = gl.get_caller_address()
+        # FIX CỐT LÕI: Sử dụng gl.get_caller() để lấy address người deploy
+        # Đây là hàm chuẩn duy nhất trong v0.2.16
+        deployer = gl.get_caller()
         self.balances[deployer] = initial_supply
 
     @gl.public.view
@@ -23,13 +23,29 @@ class TokenContract(gl.Contract):
 
     @gl.public.write
     def transfer(self, to_address: str, amount: u256):
-        # Sử dụng gl.get_caller_address() cho mọi logic xác thực
-        sender = gl.get_caller_address()
+        """
+        Giao dịch chuyển tiền được giám sát bởi AI Guardian.
+        """
+        sender = gl.get_caller()
         sender_balance = self.balances.get(sender, u256(0))
 
+        # 1. Kiểm tra số dư (SMC logic)
         assert sender_balance >= amount, "Lỗi: Số dư không đủ"
 
-        # Cập nhật số dư (Atomic Swap)
+        # 2. AI Validator (Kiểm tra ý đồ giao dịch)
+        prompt = (
+            f"Phân tích giao dịch: Ví {sender} gửi {amount} token đến {to_address}. "
+            f"Địa chỉ nhận có dấu hiệu lừa đảo hoặc giao dịch có bất thường không? "
+            f"Trả về 'SAFE' hoặc 'SUSPICIOUS'."
+        )
+        
+        # AI request sẽ kích hoạt Optimistic Democracy
+        security_verdict = self.ai_request(prompt)
+
+        if "SUSPICIOUS" in security_verdict.upper():
+            assert False, f"Giao dịch bị chặn bởi AI Guardian. Lý do: {security_verdict}"
+
+        # 3. Thực thi chuyển tiền (Atomic Transition)
         self.balances[sender] = sender_balance - amount
         
         receiver_balance = self.balances.get(to_address, u256(0))
