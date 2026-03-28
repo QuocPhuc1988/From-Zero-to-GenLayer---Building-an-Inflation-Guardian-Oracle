@@ -4,47 +4,33 @@
 from genlayer import *
 
 class TokenContract(gl.Contract):
-    # Khai báo State Variables
+    # Khai báo State với TreeMap và u256
     total_supply: u256
     balances: TreeMap[str, u256]
 
     def __init__(self, initial_supply: u256):
-        """
-        Khởi tạo Token và cấp toàn bộ Supply cho người Deploy.
-        """
         self.total_supply = initial_supply
         self.balances = TreeMap()
         
-        # Gán toàn bộ số dư ban đầu cho người tạo hợp đồng
-        self.balances[gl.message.sender] = initial_supply
+        # FIX CỐT LÕI: Sử dụng gl.get_caller_address() 
+        # để gán toàn bộ supply cho người deploy
+        deployer = gl.get_caller_address()
+        self.balances[deployer] = initial_supply
 
     @gl.public.view
     def get_balance_of(self, address: str) -> u256:
-        """
-        Kiểm tra số dư của một địa chỉ bất kỳ.
-        """
         return self.balances.get(address, u256(0))
 
     @gl.public.write
     def transfer(self, to_address: str, amount: u256):
-        """
-        Logic chuyển tiền an toàn: Kiểm tra số dư -> Trừ người gửi -> Cộng người nhận.
-        """
-        sender = gl.message.sender
-        
-        # 1. Lấy số dư hiện tại của người gửi
+        # Sử dụng gl.get_caller_address() cho mọi logic xác thực
+        sender = gl.get_caller_address()
         sender_balance = self.balances.get(sender, u256(0))
-        
-        # 2. Kiểm tra điều kiện (Security First)
-        # Nếu không đủ tiền, giao dịch sẽ fail và không tốn Gas/Tài nguyên vô ích
-        assert sender_balance >= amount, "Lỗi: Số dư không đủ để thực hiện giao dịch"
-        
-        # 3. Cập nhật số dư người gửi
+
+        assert sender_balance >= amount, "Lỗi: Số dư không đủ"
+
+        # Cập nhật số dư (Atomic Swap)
         self.balances[sender] = sender_balance - amount
         
-        # 4. Cập nhật số dư người nhận
         receiver_balance = self.balances.get(to_address, u256(0))
         self.balances[to_address] = receiver_balance + amount
-        
-        # Log đơn giản để xác nhận (Tùy chọn)
-        print(f"Giao dịch thành công: {amount} token đã được gửi tới {to_address}")
